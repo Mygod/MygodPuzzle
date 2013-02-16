@@ -69,8 +69,8 @@ namespace Mygod.Puzzle
                 targetQueue.Enqueue(targetNumber, Direction.None);
                 while (sourceQueue.Count > 0 && targetQueue.Count > 0)
                 {
-                    var solution = sourceQueue.Count < targetQueue.Count ? Extend(sourceQueue, targetQueue)
-                                                                         : Extend(targetQueue, sourceQueue);
+                    var solution = sourceQueue.Count <= targetQueue.Count ? Extend(sourceQueue, targetQueue)
+                                                                          : Extend(targetQueue, sourceQueue);
                     if (solution < 0) continue;
                     var result = new LinkedList<Direction>();
                     var copy = new Board(board.Width, board.Height, solution);
@@ -126,11 +126,11 @@ namespace Mygod.Puzzle
 
         public IEnumerable<Int32Point> GetSolution(BoardWrapper board)
         {
-            return new Solver(board.Board, board.Target).Solve();
+            return new Solver(board.Board, board.Target).Solve().ToList();
         }
     }
 
-    public class AStartSearchSolver : IBoardSolver
+    public class AStarSearchSolver : IBoardSolver
     {
         public IEnumerable<Int32Point> GetSolution(BoardWrapper board)
         {

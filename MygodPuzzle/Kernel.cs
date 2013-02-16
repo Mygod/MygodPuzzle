@@ -100,7 +100,7 @@ namespace Mygod.Puzzle
         {
             get
             {
-                if (number < 0)
+                if (number < 0) // TODO: THIS PART SEEMED TO BE WRONG (OR THE OTHER ONE)
                 {
                     number = 0;
                     var tree = new FenwickTree<int>(Size);

@@ -88,18 +88,19 @@
                             <TabItem>
                                 <Grid>
                                     <Canvas Name="GamingCanvas" x:FieldModifier="private" />
-                                    <Border Name="Processing" Opacity="0" Background="#88FFFFFF">
-                                        <Image Name="Spinner" x:FieldModifier="private"
+                                    <Border Name="Processing" Opacity="0" IsHitTestVisible="False" Background="#88FFFFFF"
+                                            x:FieldModifier="private">
+                                        <Image Name="Spinner" x:FieldModifier="private" RenderTransformOrigin="0.5,0.5"
                                                HorizontalAlignment="Center" VerticalAlignment="Center">
                                             <Image.RenderTransform>
-                                                <RotateTransform CenterX="0.5" CenterY="0.5" />
+                                                <RotateTransform />
                                             </Image.RenderTransform>
                                             <Image.Triggers>
                                                 <EventTrigger RoutedEvent="Image.Loaded">
                                                     <BeginStoryboard>
                                                         <Storyboard TargetName="Spinner">
                                                             <DoubleAnimation Storyboard.TargetProperty="RenderTransform.Angle"
-                                                                             To="360" RepeatBehavior="Forever" Duration="0:0:1" />
+                                                                             From="0" To="360" RepeatBehavior="Forever" Duration="0:0:5" />
                                                         </Storyboard>
                                                     </BeginStoryboard>
                                                 </EventTrigger>
@@ -151,10 +152,10 @@
                                     </Grid.ColumnDefinitions>
                                     <Label Content="选择拼图大小：(_S)" Grid.ColumnSpan="3" Target="{Binding ElementName=WidthBox}" />
                                     <xctk:IntegerUpDown Name="WidthBox" x:FieldModifier="private" Grid.Row="2"
-                                                        Minimum="2" Maximum="99" ValueChanged="GenerateMap" />
+                                                        Minimum="2" Maximum="9" ValueChanged="GenerateMap" />
                                     <TextBlock Text="x" Margin="2,0" Grid.Row="2" Grid.Column="1" />
                                     <xctk:IntegerUpDown Name="HeightBox" x:FieldModifier="private" Grid.Row="2" Grid.Column="2"
-                                                        Minimum="2" Maximum="99" ValueChanged="GenerateMap" />
+                                                        Minimum="2" Maximum="9" ValueChanged="GenerateMap" />
                                 </Grid>
                             </TabItem>
                             <TabItem>
@@ -163,7 +164,7 @@
                                         步数：<Run Text="{Binding Moves}" /><LineBreak />
                                         时间：<Run Text="{Binding Time, Converter={StaticResource MinuteSecond}, Mode=OneWay}" />
                                     </TextBlock>
-                                    <Button Content="双向宽搜求解(_1)" Click="BidirectionalBreadthFirstSearchSolve" />
+                                    <Button Content="求最优解(_1)" Click="ShortestSolve" />
                                     <Button Content="保存游戏(_S)" Click="SaveBoard" />
                                     <Button Content="重新选择(_R)" Click="TryExitBoard" />
                                 </StackPanel>

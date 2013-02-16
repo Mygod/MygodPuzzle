@@ -16,6 +16,7 @@ using System.IO;
 using System.Linq;
 using System.Media;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -200,7 +201,6 @@ namespace Mygod.Puzzle
         private Border[] pieces;
         private bool[] highlighted;
         private GamingStatus status;
-        private Thread solutionFinder;
 
         private void RecalcPictureSize()
         {
@@ -314,10 +314,9 @@ namespace Mygod.Puzzle
             RestoreGame();
         }
 
-        private void TryMove(object sender, MouseButtonEventArgs e)
+        private void TryMove(Int32Point point)
         {
-            if (status != GamingStatus.Playing) return;
-            var affected = wrapper.TryMove(wrapper.Board.Mappings[(int)((Border)sender).Tag]).ToArray();
+            var affected = wrapper.TryMove(point).ToArray();
             if (affected.Length > 0)
             {
                 var storyboard = new Storyboard();
@@ -345,6 +344,10 @@ namespace Mygod.Puzzle
                 }
             }
             else SystemSounds.Exclamation.Play();
+        }
+        private void TryMove(object sender, MouseButtonEventArgs e)
+        {
+            if (status == GamingStatus.Playing) TryMove(wrapper.Board.Mappings[(int)((Border)sender).Tag]);
         }
 
         private void PeekMove(object sender, MouseEventArgs e)
@@ -402,10 +405,25 @@ namespace Mygod.Puzzle
         private void Solve(IBoardSolver solver)
         {
             if (status != GamingStatus.Playing) return;
+            SaveBoard();
             status = GamingStatus.Processing;
+            Processing.IsHitTestVisible = true;
+            queue.EnqueueAndBegin(GetFadingStoryboard(true, Processing));
+            var solutionFinder = new Task<IEnumerable<Int32Point>>(() => solver.GetSolution(wrapper));
+            solutionFinder.Start();
+            solutionFinder.ContinueWith(task => Dispatcher.Invoke(() =>
+            {
+                var storyboard = GetFadingStoryboard(false, Processing);
+                storyboard.Completed += (sender, e) =>
+                {
+                    status = GamingStatus.Showing;
+                    foreach (var point in task.Result) TryMove(point);
+                };
+                queue.EnqueueAndBegin(storyboard);
+            }));
         }
 
-        private void BidirectionalBreadthFirstSearchSolve(object sender, RoutedEventArgs e)
+        private void ShortestSolve(object sender, RoutedEventArgs e)
         {
             Solve(new BidirectionalBreadthFirstSearchSolver());
         }
