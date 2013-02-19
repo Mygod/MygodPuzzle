@@ -24,25 +24,18 @@ namespace Mygod.Puzzle
             Data = new int[width, height];
             Mappings = new Int32Point[Size];
             if (number < 0) return;
-            var intermediary = new int[Size - 1];
-            var j = 2;
-            for (var i = 0; i < intermediary.Length; i++)
+            var inversion = new BigInteger[Size];
+            for (var i = 0; i < Size; i++)
             {
-                intermediary[i] = (int) (number % j);
-                number /= j++;
+                inversion[i] = number % (i + 1);
+                number /= i + 1;
             }
-            for (var i = 0; i < Size; i++) this[i] = -1;
-            for (var i = Size - 2; i >= 0; i--)
+            for (var i = 0; i < Size; i++)
             {
-                var m = Size;
-                do m--; while (this[m] >= 0);
-                for (var k = 0; k < intermediary[i]; k++) do m--; while (this[m] >= 0);
-                this[m] = i + 1;
-            }
-            for (var i = Size - 1; i >= 0; i--) if (this[i] < 0)
-            {
-                this[i] = 0;
-                return;
+                int j;
+                for (j = Size - 1; j >= 0; j--) if (inversion[j] == 0) break;
+                this[Size - 1 - j] = i;
+                for (; j < Size; j++) inversion[j]--;
             }
         }
         public Board(int width, int height) : this(width, height, 0)
@@ -100,14 +93,14 @@ namespace Mygod.Puzzle
         {
             get
             {
-                if (number < 0) // TODO: THIS PART SEEMED TO BE WRONG (OR THE OTHER ONE)
+                if (number < 0)
                 {
                     number = 0;
-                    var tree = new FenwickTree<int>(Size);
-                    for (var i = 0; i < Size; i++)
+                    var s1 = Size - 1;
+                    for (var i = 0; i < s1; i++)
                     {
-                        number += (this[i] - tree.GetSum(this[i])) * FactorialLookup.GetFactorial(Size - i - 1);
-                        tree.Update(this[i], 1);
+                        for (var j = i + 1; j < Size; j++) if (this[i] > this[j]) number++;
+                        number *= s1 - i;
                     }
                 }
                 return number;
