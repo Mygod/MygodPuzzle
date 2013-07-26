@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using C5;
 
 namespace Mygod.Puzzle
 {
@@ -14,127 +15,131 @@ namespace Mygod.Puzzle
     {
     }
 
-    public class UnremovableQueue<TKey, TValue>
+    public class SearchSolver : IBoardSolver
     {
-        private readonly List<KeyValuePair<TKey, TValue>> queue = new List<KeyValuePair<TKey, TValue>>();
-        private readonly Dictionary<TKey, int> queuePointer = new Dictionary<TKey, int>();
-        private int head;
-
-        public int Count { get { return queue.Count - head; } }
-
-        public bool Contains(TKey key)
+        private struct QueueEntry
         {
-            return queuePointer.ContainsKey(key);
-        }
-        public int GetIndex(TKey key)
-        {
-            return Contains(key) ? queuePointer[key] : -1;
-        }
-        public KeyValuePair<TKey, TValue> GetPair(int index)
-        {
-            return queue[index];
-        }
-        public void Enqueue(TKey key, TValue value)
-        {
-            if (Contains(key)) throw new InvalidOperationException("试图重复将同一节点插入队列。");
-            queuePointer.Add(key, queue.Count);
-            queue.Add(new KeyValuePair<TKey, TValue>(key, value));
-        }
-        public KeyValuePair<TKey, TValue> Dequeue()
-        {
-            if (head == queue.Count) throw new InvalidOperationException("队列已空！");
-            return queue[head++];
-        }
-    }
-
-    public class BidirectionalBreadthFirstSearchSolver : IBoardSolver
-    {
-        private class Solver
-        {
-            public Solver(Board b, Board target)
+            public QueueEntry(int steps, BigInteger index, Searcher searcher)
             {
-                board = b;
-                targetNumber = target.Number;
+                Index = index;
+                Priority = Math.Abs(steps);
+                if (Math.Abs(Settings.Current.Optimization) < 1e-4) return;
+                var distance = 0;
+                var board = new Board(searcher.Board.Width, searcher.Board.Height, index);
+                for (var i = 0; i < board.Size - 1; i++) distance += GetDistance(board.Mappings[i], searcher.TargetBoard.Mappings[i]);
+                Priority += distance * Settings.Current.Optimization;
             }
 
-            private readonly Board board;
-            private readonly BigInteger targetNumber;
-            private readonly UnremovableQueue<BigInteger, Direction> sourceQueue = new UnremovableQueue<BigInteger, Direction>(),
-                                                                     targetQueue = new UnremovableQueue<BigInteger, Direction>();
-
-            public IEnumerable<Int32Point> Solve()
+            private static int GetDistance(Int32Point a, Int32Point b)
             {
-                if (board.Number == targetNumber) yield break;
-                sourceQueue.Enqueue(board.Number, Direction.None);
-                targetQueue.Enqueue(targetNumber, Direction.None);
+                return a.X + a.Y - b.X - b.Y;
+            }
+
+            public readonly BigInteger Index;
+            public readonly double Priority;
+        }
+        private struct DictionaryEntry
+        {
+            public DictionaryEntry(BigInteger previous, int steps)
+            {
+                Previous = previous;
+                Steps = steps;
+            }
+
+            public readonly BigInteger Previous;
+            public readonly int Steps;    // positive: source, negative: target
+        }
+
+        private class Searcher
+        {
+            private class PriorityComparer : IComparer<QueueEntry>
+            {
+                public int Compare(QueueEntry x, QueueEntry y)
+                {
+                    return x.Priority.CompareTo(y.Priority);
+                }
+            }
+
+            public Searcher(Board board, Board target)
+            {
+                Board = board;
+                TargetBoard = target;
+                targetNumber = target.Number;
+                var comparer = new PriorityComparer();
+                sourceQueue = new IntervalHeap<QueueEntry>(comparer);
+                targetQueue = new IntervalHeap<QueueEntry>(comparer);
+            }
+
+            public readonly Board Board, TargetBoard;
+            private readonly BigInteger targetNumber;
+            private readonly IntervalHeap<QueueEntry> sourceQueue, targetQueue;     // it's actually used as a priority queue
+            private readonly Dictionary<BigInteger, DictionaryEntry> dictionary = new Dictionary<BigInteger, DictionaryEntry>();
+
+            private IEnumerable<Int32Point> GetSolution(BigInteger sourceLast, BigInteger targetFirst)
+            {
+                var temp = new List<BigInteger> { sourceLast };
+                var previous = dictionary[sourceLast].Previous;
+                while (previous != BigInteger.MinusOne)
+                {
+                    temp.Add(previous);
+                    previous = dictionary[previous].Previous;
+                }
+                for (var i = temp.Count - 2; i >= 0; i--) yield return new Board(Board.Width, Board.Height, temp[i]).EmptyPoint;
+                yield return new Board(Board.Width, Board.Height, targetFirst).EmptyPoint;
+                previous = dictionary[targetFirst].Previous;
+                while (previous != BigInteger.MinusOne)
+                {
+                    yield return new Board(Board.Width, Board.Height, previous).EmptyPoint;
+                    previous = dictionary[previous].Previous;
+                }
+            }
+
+            public IEnumerable<Int32Point> Solve(bool bbfs = true)
+            {
+                if (Board.Number == targetNumber) return new Int32Point[0];
+                sourceQueue.Add(new QueueEntry(1, Board.Number, this));
+                dictionary.Add(Board.Number, new DictionaryEntry(BigInteger.MinusOne, 1));
+                targetQueue.Add(new QueueEntry(-1, targetNumber, this));
+                dictionary.Add(targetNumber, new DictionaryEntry(BigInteger.MinusOne, -1));
                 while (sourceQueue.Count > 0 && targetQueue.Count > 0)
                 {
-                    var solution = sourceQueue.Count <= targetQueue.Count ? Extend(sourceQueue, targetQueue)
-                                                                          : Extend(targetQueue, sourceQueue);
-                    if (solution < 0) continue;
-                    var result = new LinkedList<Direction>();
-                    var copy = new Board(board.Width, board.Height, solution);
-                    var pair = sourceQueue.GetPair(sourceQueue.GetIndex(solution));
-                    while (pair.Value != Direction.None)
-                    {
-                        result.AddFirst(pair.Value);
-                        copy.Move(copy.GetPoint(Board.Reverse(pair.Value)));
-                        pair = sourceQueue.GetPair(sourceQueue.GetIndex(copy.Number));
-                    }
-                    copy = new Board(board.Width, board.Height, solution);
-                    pair = sourceQueue.GetPair(targetQueue.GetIndex(solution));
-                    while (pair.Value != Direction.None)
-                    {
-                        var reversed = Board.Reverse(pair.Value);
-                        result.AddLast(reversed);
-                        copy.Move(copy.GetPoint(reversed));
-                        pair = targetQueue.GetPair(targetQueue.GetIndex(copy.Number));
-                    }
-                    copy = new Board(board);
-                    foreach (var direction in result)
-                    {
-                        Int32Point p;
-                        yield return p = copy.GetPoint(direction);
-                        copy.Move(p);
-                    }
+                    var solution = bbfs && sourceQueue.Count <= targetQueue.Count ? Extend(sourceQueue) : Extend(targetQueue);
+                    if (solution != null) return GetSolution(solution.Item1, solution.Item2);
                 }
-                throw new NoSolutionException();
+                throw new NoSolutionException();    // this exception should never be thrown
             }
 
-            private BigInteger Extend(UnremovableQueue<BigInteger, Direction> queueToExtend,
-                                      UnremovableQueue<BigInteger, Direction> queueOther)
+            private Tuple<BigInteger, BigInteger> Extend(IntervalHeap<QueueEntry> queue)
             {
-                var number = queueToExtend.Dequeue();
-                var current = new Board(board.Width, board.Height, number.Key);
-                var except = Board.Reverse(number.Value);
+                var number = queue.DeleteMin().Index;
+                var previous = dictionary[number];
+                var sign = Math.Sign(previous.Steps);
+                var newSteps = previous.Steps + sign;
+                var current = new Board(Board.Width, Board.Height, number);
                 for (var i = 1; i <= 4; i++)
                 {
-                    var direction = (Direction) i;
-                    if (direction == except) continue;
+                    var direction = (Direction)i;
                     var point = current.GetPoint(direction);
-                    if (!current.IsInRange(point)) continue;
+                    if (!current.IsInRange(point)) continue;    // skip if it is out of range
                     var newBoard = new Board(current);
-                    newBoard.Move(point);
+                    newBoard.Move(point);                       // emulate clicking the point
                     var n = newBoard.Number;
-                    if (queueToExtend.Contains(n)) continue;
-                    queueToExtend.Enqueue(n, direction);
-                    if (queueOther.Contains(n)) return n;   // solution found! YAY!
+                    if (dictionary.ContainsKey(n))
+                    {
+                        var entry = dictionary[n];
+                        if (Math.Sign(entry.Steps) == sign) continue;                            // the board has been reached before
+                        return sign == 1 ? Tuple.Create(number, n) : Tuple.Create(n, number);   // else solution found! YAY!
+                    }
+                    queue.Add(new QueueEntry(newSteps, n, this));
+                    dictionary.Add(n, new DictionaryEntry(number, newSteps));
                 }
-                return BigInteger.MinusOne;
+                return null;
             }
         }
 
         public IEnumerable<Int32Point> GetSolution(BoardWrapper board)
         {
-            return new Solver(board.Board, board.Target).Solve().ToList();
-        }
-    }
-
-    public class AStarSearchSolver : IBoardSolver
-    {
-        public IEnumerable<Int32Point> GetSolution(BoardWrapper board)
-        {
-            throw new NotImplementedException();
+            return new Searcher(board.Board, board.Target).Solve(Settings.Current.Bidirectional).ToList();
         }
     }
 }

@@ -5,7 +5,7 @@
  * 3. GamingPage
  * 4. WinPage
  * 5. LoadSavedataPage
- * 6. SettingsPage (TODO)
+ * 6. SettingsPage
  */
 
 using System;
@@ -15,7 +15,6 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Media;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -40,24 +39,20 @@ namespace Mygod.Puzzle
             watcher.Created += UpdateProfileList;
             watcher.Deleted += UpdateProfileList;
             watcher.EnableRaisingEvents = true;
+            reseau.SetBinding(Reseau.ColumnsProperty, new Binding("BoardWidth") { Source = Settings.Current });
+            reseau.SetBinding(Reseau.RowsProperty, new Binding("BoardHeight") { Source = Settings.Current });
+            reseau.SetBinding(Reseau.BorderBrushProperty, new Binding("BorderBrush") { Source = Settings.Current });
+            reseau.SetBinding(Reseau.BorderThicknessProperty, new Binding("BorderThickness") { Source = Settings.Current });
             UpdateProfileList();
-            Width = Settings.WindowWidth;
-            Height = Settings.WindowHeight;
             BackgroundBrush.ImageSource = new BitmapImage(new Uri(Path.Combine(CurrentApp.Directory, "Resources/Background.png")));
             Spinner.Source = new BitmapImage(new Uri(Path.Combine(CurrentApp.Directory, "Resources/Processing.png")));
             PictureList.ItemsSource = new DirectoryInfo(Path.Combine(CurrentApp.Directory, "Pictures"))
                 .EnumerateFiles().Select(file => file.FullName);
-            reseau.BorderBrush = new SolidColorBrush(Settings.BorderColor);
-            reseau.BorderThickness = Settings.BorderThickness;
-            WidthBox.Value = Settings.BoardWidth;
-            HeightBox.Value = Settings.BoardHeight;
-            initialized = true;
         }
 
-        private readonly bool initialized;
         private bool fadingOut;
-        private double mainHeight;
         private Point mainPoint;
+        private double mainHeight;
         private readonly StoryboardQueue queue = new StoryboardQueue();
 
         private void FadeIn(object sender, RoutedEventArgs e)
@@ -65,25 +60,21 @@ namespace Mygod.Puzzle
             var s = GetFadingStoryboard(true);
             s.Completed += (a, b) =>
             {
-                mainHeight = MainLabel.ActualHeight;
                 mainPoint = MainLabel.TranslatePoint(new Point(0, 0), LastPieceCanvas);
+                mainHeight = MainLabel.ActualHeight;
             };
             queue.EnqueueAndBegin(s);
         }
 
         private void FadeOut(object sender, CancelEventArgs e)
         {
-            if (fadingOut || Tabs.SelectedIndex == 3 && !TryExitBoard()) return;
-            e.Cancel = fadingOut = true;
+            if (fadingOut) return;
+            e.Cancel = true;
+            if (Tabs.SelectedIndex == 3 && !TryExitBoard()) return;
+            fadingOut = true;
             var storyboard = GetFadingStoryboard(false);
             storyboard.Completed += (a, b) => Close();
             queue.EnqueueAndBegin(storyboard);
-        }
-
-        private void OnSizeChanged(object sender, SizeChangedEventArgs e)
-        {
-            Settings.WindowWidth = Width;
-            Settings.WindowHeight = Height;
         }
 
         private void PreviousPage(object sender = null, RoutedEventArgs e = null)
@@ -155,6 +146,19 @@ namespace Mygod.Puzzle
             queue.EnqueueAndBegin(storyboard);
         }
 
+        private void TryExitBoard(object sender, RoutedEventArgs e)
+        {
+            switch (Tabs.SelectedIndex)
+            {
+                case 3:
+                    if (TryExitBoard()) SwitchTab(0, LastPieceCanvas.Children.Clear);
+                    break;
+                default:
+                    SwitchTab(0);
+                    break;
+            }
+        }
+
         #endregion
 
         #region Main Page
@@ -162,6 +166,11 @@ namespace Mygod.Puzzle
         private void ExitGame(object sender, RoutedEventArgs e)
         {
             Close();
+        }
+
+        private void GoToSettingsPage(object sender, RoutedEventArgs e)
+        {
+            SwitchTab(6);
         }
 
         #endregion
@@ -181,14 +190,6 @@ namespace Mygod.Puzzle
             });
             SelectDifficultyGrid.Children.Add(preview);
             SelectDifficultyGrid.Children.Add(reseau);
-            GenerateMap();
-        }
-
-        private void GenerateMap(object sender = null, RoutedPropertyChangedEventArgs<object> e = null)
-        {
-            if (!initialized) return;
-            reseau.Columns = Settings.BoardWidth = WidthBox.Value.HasValue ? WidthBox.Value.Value : 2;
-            reseau.Rows = Settings.BoardHeight = HeightBox.Value.HasValue ? HeightBox.Value.Value : 2;
         }
 
         #endregion
@@ -198,21 +199,26 @@ namespace Mygod.Puzzle
         private BoardWrapper wrapper;
         private ImageSplitter splitter;
         private Size pictureSize;
-        private Border[] pieces;
+        private Grid[] pieces;
         private bool[] highlighted;
         private GamingStatus status;
 
         private void RecalcPictureSize()
         {
             pictureSize = new Size(GamingCanvas.Width / wrapper.Board.Width, mainHeight / wrapper.Board.Height);
-            foreach (var border in GamingCanvas.Children.OfType<Border>())
+            double thicknessX = Settings.Current.BorderThickness / 2, thicknessY = thicknessX;
+            if (pictureSize.Width >= pictureSize.Height) thicknessX *= pictureSize.Height / pictureSize.Width;
+            else thicknessY *= pictureSize.Width / pictureSize.Height;
+            var borderThickness = new Thickness(thicknessX, thicknessY, thicknessX, thicknessY);
+            foreach (var grid in GamingCanvas.Children.OfType<Grid>())
             {
-                var key = (int)border.Tag;
+                var key = (int)grid.Tag;
                 var point = wrapper.Board.Mappings[key];
-                Canvas.SetLeft(border, point.X * pictureSize.Width);
-                Canvas.SetTop(border, point.Y * pictureSize.Height);
-                border.Width = pictureSize.Width + 1;
-                border.Height = pictureSize.Height + 1;
+                Canvas.SetLeft(grid, point.X * pictureSize.Width);
+                Canvas.SetTop(grid, point.Y * pictureSize.Height);
+                grid.Width = pictureSize.Width;
+                grid.Height = pictureSize.Height;
+                ((FrameworkElement)grid.Children[0]).Margin = borderThickness;
             }
         }
 
@@ -278,19 +284,14 @@ namespace Mygod.Puzzle
             StatusDisplay.DataContext = null;
             StatusDisplay.DataContext = wrapper;
             splitter = new ImageSplitter((BitmapSource) preview.Source, wrapper.Board.Height, wrapper.Board.Width);
-            pieces = new Border[wrapper.Board.Size];
+            pieces = new Grid[wrapper.Board.Size];
             highlighted = new bool[wrapper.Board.Size];
             GamingCanvas.Children.Clear();
             for (var y = 0; y < wrapper.Board.Height; y++) for (var x = 0; x < wrapper.Board.Width; x++)
             {
                 var key = wrapper.Board.GetKey(x, y);
-                pieces[key] = new Border
-                {
-                    BorderBrush = new SolidColorBrush(Settings.BorderColor),
-                    BorderThickness = new Thickness(Settings.BorderThickness),
-                    Tag = key,
-                    Child = new Image { Source = splitter.Result[x, y] }
-                };
+                pieces[key] = new Grid { Background = new SolidColorBrush(Settings.Current.BorderColor),
+                                         Tag = key, Children = { new Image { Source = splitter.Result[x, y] } } };
                 if (key < wrapper.Board.Size - 1)
                 {
                     pieces[key].Cursor = Cursors.Hand;
@@ -309,7 +310,7 @@ namespace Mygod.Puzzle
 
         private void StartGame()
         {
-            wrapper = new BoardWrapper(PictureList.SelectedItem.ToString(), Settings.BoardWidth, Settings.BoardHeight);
+            wrapper = new BoardWrapper(PictureList.SelectedItem.ToString(), Settings.Current.BoardWidth, Settings.Current.BoardHeight);
             wrapper.RandomGenerate();
             RestoreGame();
         }
@@ -347,7 +348,7 @@ namespace Mygod.Puzzle
         }
         private void TryMove(object sender, MouseButtonEventArgs e)
         {
-            if (status == GamingStatus.Playing) TryMove(wrapper.Board.Mappings[(int)((Border)sender).Tag]);
+            if (status == GamingStatus.Playing) TryMove(wrapper.Board.Mappings[(int)((Grid)sender).Tag]);
         }
 
         private void PeekMove(object sender, MouseEventArgs e)
@@ -397,15 +398,10 @@ namespace Mygod.Puzzle
             queue.Clear();
             return true;
         }
-        private void TryExitBoard(object sender, RoutedEventArgs e)
-        {
-            if (TryExitBoard()) SwitchTab(0, LastPieceCanvas.Children.Clear);
-        }
 
         private void Solve(IBoardSolver solver)
         {
             if (status != GamingStatus.Playing) return;
-            SaveBoard();
             status = GamingStatus.Processing;
             Processing.IsHitTestVisible = true;
             queue.EnqueueAndBegin(GetFadingStoryboard(true, Processing));
@@ -417,15 +413,22 @@ namespace Mygod.Puzzle
                 storyboard.Completed += (sender, e) =>
                 {
                     status = GamingStatus.Showing;
-                    foreach (var point in task.Result) TryMove(point);
+                    Int32Point last = wrapper.Board.Mappings[wrapper.Board.Size - 1], previous = last;
+                    foreach (var point in task.Result)
+                    {
+                        if (point.X != last.X && point.Y != last.Y) TryMove(last = previous);
+                        previous = point;
+                    }
+                    TryMove(previous);
+                    Processing.IsHitTestVisible = false;
                 };
                 queue.EnqueueAndBegin(storyboard);
             }));
         }
 
-        private void ShortestSolve(object sender, RoutedEventArgs e)
+        private void SearchForSolution(object sender, RoutedEventArgs e)
         {
-            Solve(new BidirectionalBreadthFirstSearchSolver());
+            Solve(new SearchSolver());
         }
 
         #endregion
@@ -464,6 +467,11 @@ namespace Mygod.Puzzle
         {
             var file = ProfileList.SelectedItem as FileInfo;
             if (file != null) file.Delete();
+        }
+
+        private void DeleteAllProfile(object sender, RoutedEventArgs e)
+        {
+            foreach (var file in Directory.EnumerateFileSystemEntries(saveDataPath, "*.dat")) File.Delete(file);
         }
 
         private void ReturnMainPage(object sender, RoutedEventArgs e)

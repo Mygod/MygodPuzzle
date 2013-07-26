@@ -67,6 +67,8 @@ namespace Mygod.Puzzle
             set { var point = GetPoint(key); this[point.X, point.Y] = value; }
         }
 
+        public Int32Point EmptyPoint { get { return Mappings[Size - 1]; } }
+
         private int size = -1;
         public int Size { get { if (size < 0) size = Width * Height; return size; } }
         private int oddHash = -1;
@@ -186,7 +188,7 @@ namespace Mygod.Puzzle
         public IEnumerable<int> PeekMove(Int32Point position)
         {
             if (position.X < 0 || position.Y < 0 || position.X >= Width || position.Y >= Height) yield break;
-            var emptyPoint = Mappings[Size - 1];
+            var emptyPoint = EmptyPoint;
             if (position == emptyPoint || (position.X != emptyPoint.X && position.Y != emptyPoint.Y)) yield break;
             if (position.X == emptyPoint.X)
             {
@@ -203,7 +205,7 @@ namespace Mygod.Puzzle
         public IEnumerable<int> TryMove(Int32Point position)
         {
             if (!IsInRange(position)) yield break;
-            var emptyPoint = Mappings[Size - 1];
+            var emptyPoint = EmptyPoint;
             if (position == emptyPoint || (position.X != emptyPoint.X && position.Y != emptyPoint.Y)) yield break;
             if (position.X == emptyPoint.X)
             {
@@ -237,24 +239,25 @@ namespace Mygod.Puzzle
         public void Move(Int32Point position)
         {
             if (!IsInRange(position)) return;
-            var emptyPoint = Mappings[Size - 1];
-            if (position == emptyPoint || (position.X != emptyPoint.X && position.Y != emptyPoint.Y)) return;
+            var emptyPoint = EmptyPoint;
             if (position.X == emptyPoint.X)
             {
+                if (position.Y == emptyPoint.Y) return;
                 for (var y = emptyPoint.Y; y < position.Y; y++) this[position.X, y] = this[position.X, y + 1];
                 for (var y = emptyPoint.Y; y > position.Y; y--) this[position.X, y] = this[position.X, y - 1];
             }
-            else
+            else if (position.Y == emptyPoint.Y)
             {
                 for (var x = emptyPoint.X; x < position.X; x++) this[x, position.Y] = this[x + 1, position.Y];
                 for (var x = emptyPoint.X; x > position.X; x--) this[x, position.Y] = this[x - 1, position.Y];
             }
+            else return;
             this[position.X, position.Y] = Size - 1;
         }
 
         public Int32Point GetPoint(Direction dir)
         {
-            var emptyPoint = Mappings[Size - 1];
+            var emptyPoint = EmptyPoint;
             switch (dir)
             {
                 case Direction.Up:      return new Int32Point(emptyPoint.X, emptyPoint.Y + 1);
@@ -269,18 +272,6 @@ namespace Mygod.Puzzle
         {
             return point.X >= 0 && point.Y >= 0 && point.X < Width && point.Y < Height;
         }
-
-        public static Direction Reverse(Direction dir)
-        {
-            switch (dir)
-            {
-                case Direction.Up:      return Direction.Down;
-                case Direction.Down:    return Direction.Up;
-                case Direction.Left:    return Direction.Right;
-                case Direction.Right:   return Direction.Left;
-                default:                return Direction.None;
-            }
-        }
     }
 
     public enum Direction : byte
@@ -290,18 +281,22 @@ namespace Mygod.Puzzle
 
     public sealed class BoardWrapper : INotifyPropertyChanged
     {
-        public BoardWrapper(string imagePath, int width, int height, bool isTarget = false)
+        public BoardWrapper(string imagePath, int width, int height, BigInteger number, bool isTarget = false)
         {
             ImagePath = imagePath;
-            Board = new Board(width, height);
+            Board = new Board(width, height, number);
             Target = isTarget ? Board : new Board(width, height);
             notifier.Interval = TimeSpan.FromSeconds(1);
             notifier.Tick += NotifyTimeChanged;
         }
+        public BoardWrapper(string imagePath, int width, int height, bool isTarget = false)
+            : this(imagePath, width, height, BigInteger.Zero, isTarget)
+        {
+        }
 
         public readonly string ImagePath;
         public readonly Board Board, Target;
-        private const int BoardHash = 0x4753504D, BoardVersion = 0;
+        private const int BoardHash = 0x4753504D, BoardVersion = 1;
         private int moves;
         private TimeSpan time;
         private readonly Stopwatch stopwatch = new Stopwatch();
@@ -371,7 +366,7 @@ namespace Mygod.Puzzle
             writer.Write(ImagePath);
             writer.Write(Moves);
             writer.Write(Time.Ticks);
-            for (var y = 0; y < Board.Height; y++) for (var x = 0; x < Board.Width; x++) writer.Write(Board[x, y]);
+            writer.Write(Board.Number.ToByteArray());
         }
         public void Save(string path)
         {
@@ -387,9 +382,10 @@ namespace Mygod.Puzzle
             if (reader.ReadInt32() != BoardVersion) throw FileFormatError;
             int width = reader.ReadInt32(), height = reader.ReadInt32();
             var imagePath = reader.ReadString();
-            var result = new BoardWrapper(imagePath, width, height) { Moves = reader.ReadInt32(), time = new TimeSpan(reader.ReadInt64()) };
-            for (var y = 0; y < height; y++) for (var x = 0; x < width; x++) result.Board[x, y] = reader.ReadInt32();
-            return result;
+            var moves = reader.ReadInt32();
+            var time = new TimeSpan(reader.ReadInt64());
+            return new BoardWrapper(imagePath, width, height, new BigInteger(reader.ReadBytes
+                ((int)(reader.BaseStream.Length - reader.BaseStream.Position)))) { Moves = moves, time = time };
         }
         public static BoardWrapper Load(string path)
         {
@@ -402,11 +398,6 @@ namespace Mygod.Puzzle
         {
             var handler = PropertyChanged;
             if (handler != null) handler(this, new PropertyChangedEventArgs(propertyName));
-        }
-
-        public Delegate[] GetPropertyChangedInvokers()
-        {
-            return PropertyChanged == null ? new Delegate[0] : PropertyChanged.GetInvocationList();
         }
 
         private void NotifyTimeChanged(object sender, EventArgs e)
@@ -537,9 +528,9 @@ namespace Mygod.Puzzle
     public class StoryboardQueue : Queue<Storyboard>
     {
         private Storyboard currentTask;
-        public static Duration MoveDuration { get { return new Duration(TimeSpan.FromSeconds(Settings.MoveDuration)); } }
-        public static Duration FadingDuration { get { return new Duration(TimeSpan.FromSeconds(Settings.FadingDuration)); } }
-        public static Duration HighlightDuration { get { return new Duration(TimeSpan.FromSeconds(Settings.HighlightDuration)); } }
+        public static Duration MoveDuration { get { return new Duration(TimeSpan.FromSeconds(Settings.Current.MoveDuration)); } }
+        public static Duration FadingDuration { get { return new Duration(TimeSpan.FromSeconds(Settings.Current.FadingDuration)); } }
+        public static Duration HighlightDuration { get { return new Duration(TimeSpan.FromSeconds(Settings.Current.HighlightDuration)); } }
 
         public void Begin()
         {
@@ -564,17 +555,6 @@ namespace Mygod.Puzzle
         {
             Enqueue(storyboard);
             Begin();
-        }
-    }
-
-    public static class FactorialLookup
-    {
-        private static readonly List<BigInteger> Lookup = new List<BigInteger> { BigInteger.One };
-
-        public static BigInteger GetFactorial(int n)
-        {
-            for (var i = Lookup.Count; i <= n; i++) Lookup.Add(Lookup[i - 1] * i);
-            return Lookup[n];
         }
     }
 }

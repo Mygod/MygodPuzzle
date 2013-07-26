@@ -14,9 +14,7 @@ namespace Mygod.Puzzle
     {
         static AsyncImage()
         {
-            var sum = Environment.ProcessorCount - 1;   // leave one processor for smooth animation
-            if (sum <= 0) sum = 1;
-            Factory = new TaskFactory(new LimitedConcurrencyLevelTaskScheduler(sum));
+            Factory = new TaskFactory(new LimitedConcurrencyLevelTaskScheduler(1));
             Loading = new BitmapImage();
             if (DesignerProperties.GetIsInDesignMode(new DependencyObject())) return;
             Loading.BeginInit();
