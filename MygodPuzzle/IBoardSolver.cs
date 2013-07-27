@@ -116,7 +116,7 @@ namespace Mygod.Puzzle
                 var sign = Math.Sign(previous.Steps);
                 var newSteps = previous.Steps + sign;
                 var current = new Board(Board.Width, Board.Height, number);
-                for (var i = 1; i <= 4; i++)
+                for (var i = 0; i < 4; i++)
                 {
                     var direction = (Direction)i;
                     var point = current.GetPoint(direction);
