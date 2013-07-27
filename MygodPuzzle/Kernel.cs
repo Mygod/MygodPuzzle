@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq.Expressions;
 using System.Numerics;
+using System.Text;
 using System.Windows;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
@@ -154,11 +155,6 @@ namespace Mygod.Puzzle
             return y * Width + x;
         }
 
-        public int GetKey(Int32Point point)
-        {
-            return GetKey(point.X, point.Y);
-        }
-
         public Int32Point GetPoint(int key)
         {
             return new Int32Point(key % Width, key / Width);
@@ -272,11 +268,22 @@ namespace Mygod.Puzzle
         {
             return point.X >= 0 && point.Y >= 0 && point.X < Width && point.Y < Height;
         }
+
+        public override string ToString()
+        {
+            var builder = new StringBuilder();
+            for (var y = 0; y < Height; y++)
+            {
+                for (var x = 0; x < Width; x++) builder.Append(this[x, y]);
+                builder.AppendLine();
+            }
+            return builder.ToString();
+        }
     }
 
     public enum Direction : byte
     {
-        None = 0, Up = 1, Down = 2, Left = 3, Right = 4
+        Up, Down, Left, Right
     }
 
     public sealed class BoardWrapper : INotifyPropertyChanged
@@ -418,6 +425,7 @@ namespace Mygod.Puzzle
         }
     }
 
+    [DebuggerDisplay("{X},{Y}")]
     public struct Int32Point
     {
         public Int32Point(int x, int y)

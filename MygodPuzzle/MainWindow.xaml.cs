@@ -426,6 +426,11 @@ namespace Mygod.Puzzle
             }));
         }
 
+        private void FastSolution(object sender, RoutedEventArgs e)
+        {
+            Solve(new CommonSolver());
+        }
+
         private void SearchForSolution(object sender, RoutedEventArgs e)
         {
             Solve(new SearchSolver());

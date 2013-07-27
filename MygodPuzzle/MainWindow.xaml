@@ -180,6 +180,8 @@
                                     </TextBlock>
                                     <Button Content="保存游戏(_S)" Click="SaveBoard" />
                                     <Button Content="重新选择(_R)" Click="TryExitBoard" />
+                                    <Button Content="快速求解(_Q)" Click="FastSolution" IsEnabled="False"
+                                            ToolTip="此功能由于目前满是 BUG，作者没耐心调试而暂被禁用，敬请关注新版本。" />
                                     <Button Content="搜索求解(_F)" Click="SearchForSolution" />
                                     <CheckBox Content="双向宽搜(_B)"
                                               IsChecked="{Binding Bidirectional, Source={x:Static local:Settings.Current}}" />
